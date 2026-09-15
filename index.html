@@ -12,9 +12,9 @@
   /* ---------- toolbar (not part of the diagram) ---------- */
   .toolbar { position:sticky; top:0; z-index:50; display:flex; flex-wrap:wrap; gap:8px; align-items:center;
     padding:10px 16px; background:#fff; border-bottom:1px solid #cfd8dc; font-family:"Segoe UI",Arial,sans-serif; font-size:13px; }
-  .toolbar button, dialog button { font:inherit; padding:6px 12px; border:1px solid #b0bec5; border-radius:6px; background:#f7f9fa; cursor:pointer; }
-  .toolbar button:hover, dialog button:hover { background:#e3eaee; }
-  .toolbar button.primary, dialog button.primary { background:#1f6feb; border-color:#1f6feb; color:#fff; }
+  .toolbar button { font:inherit; padding:6px 12px; border:1px solid #b0bec5; border-radius:6px; background:#f7f9fa; cursor:pointer; }
+  .toolbar button:hover { background:#e3eaee; }
+  .toolbar button.primary { background:#1f6feb; border-color:#1f6feb; color:#fff; }
   .toolbar button.primary:hover { background:#1a5fcc; }
   #btnEdit[aria-pressed="true"] { background:#6a1b9a; border-color:#6a1b9a; color:#fff; }
   #btnAddEch { display:none; }
@@ -99,19 +99,8 @@
   .del { position:absolute; top:-9px; right:-9px; width:20px; height:20px; border-radius:50%; border:none; background:#c62828; color:#fff;
     font:bold 13px/20px Arial,sans-serif; padding:0; cursor:pointer; }
 
-  /* settings dialog */
-  dialog { border:none; border-radius:10px; padding:20px 22px; width:min(440px, calc(100vw - 32px)); font-family:"Segoe UI",Arial,sans-serif; font-size:13px; }
-  dialog::backdrop { background:rgba(0,0,0,.35); }
-  dialog h2 { margin:0 0 4px; font-size:16px; }
-  dialog p { margin:0 0 12px; color:#607d8b; }
-  dialog label { display:block; margin:10px 0 3px; font-weight:600; }
-  dialog input { width:100%; font:inherit; padding:7px 9px; border:1px solid #b0bec5; border-radius:6px; }
-  dialog .row { display:flex; gap:10px; } dialog .row > div { flex:1; }
-  dialog .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; }
-  dialog .actions .left { margin-right:auto; }
-
   @media print {
-    .toolbar, dialog { display:none !important; }
+    .toolbar { display:none !important; }
     body { background:#fff; } .stage { padding:0; overflow:visible; }
   }
 </style>
@@ -121,15 +110,14 @@
 <div class="toolbar">
   <button id="btnEdit" aria-pressed="false">✎ Edit</button>
   <button id="btnAddEch">+ Échéance</button>
-  <button id="btnSave" class="primary">💾 Save to GitHub</button>
+  <button id="btnSave" class="primary">💾 Save</button>
   <button id="btnDownload">⬇ Download HTML</button>
   <button id="btnPrint">🖨 Print / PDF</button>
-  <button id="btnSettings">⚙ GitHub settings</button>
   <span id="status"></span>
 </div>
 
 <div class="stage">
-<div id="diagram">
+<div id="diagram"><!--DIAGRAM-START-->
   <div class="title" data-edit>Mode avec réservation de quantités — portage des demandeurs par les échéances</div>
   <div class="subtitle" data-edit>Une seule commande, un seul poste par article ; les demandeurs spécifiques sont portés par les échéances (information interne SAP)</div>
 
@@ -187,65 +175,21 @@
     <div class="panel-title" data-edit>Message clé</div>
     <div class="key-text" data-edit>Les demandeurs spécifiques sont portés dans SAP au niveau des échéances associées au poste de commande.<br>Le fournisseur, les confirmations, les ASN et les réceptions restent associés à un poste de commande unique et agrégé.</div>
   </div>
+<!--DIAGRAM-END--></div>
 </div>
-</div>
-
-<dialog id="settings">
-  <form method="dialog" id="settingsForm">
-    <h2>GitHub settings</h2>
-    <p>Stored only in this browser (localStorage) — never written into the saved file.</p>
-    <div class="row">
-      <div><label for="cfgOwner">Owner (user or org)</label><input id="cfgOwner" required placeholder="your-username"></div>
-      <div><label for="cfgRepo">Repository</label><input id="cfgRepo" required placeholder="diagrams"></div>
-    </div>
-    <div class="row">
-      <div><label for="cfgBranch">Branch</label><input id="cfgBranch" placeholder="main"></div>
-      <div><label for="cfgPath">File path in repo</label><input id="cfgPath" placeholder="index.html"></div>
-    </div>
-    <label for="cfgToken">Personal access token</label>
-    <input id="cfgToken" type="password" required placeholder="github_pat_…" autocomplete="off">
-    <div class="actions">
-      <button type="button" id="cfgClear" class="left">Forget</button>
-      <button type="button" id="cfgCancel">Cancel</button>
-      <button type="submit" class="primary">Save settings</button>
-    </div>
-  </form>
-</dialog>
 
 <script>
 (function () {
-  const CFG_KEY = 'diagram-github-config';
+  // Saves go through a small relay that holds the GitHub token, so nobody needs one here.
+  const RELAY_URL = 'https://diagramme-sap-relay.diagramme-sap-relay.workers.dev';
+  const START = '<!-' + '-DIAGRAM-START-->', END = '<!-' + '-DIAGRAM-END-->';
   const diagram = document.getElementById('diagram');
   const statusEl = document.getElementById('status');
   const btnEdit = document.getElementById('btnEdit');
-  const dlg = document.getElementById('settings');
-  let editing = false, dirty = false;
+  let editing = false, dirty = false, saving = false;
 
   function setStatus(msg, kind) { statusEl.textContent = msg || ''; statusEl.className = kind || ''; }
   function markDirty() { dirty = true; setStatus('Unsaved changes', 'warn'); }
-
-  // ---------- config ----------
-  function getCfg() {
-    try {
-      const c = JSON.parse(localStorage.getItem(CFG_KEY) || 'null');
-      return c && c.owner && c.repo && c.token ? c : null;
-    } catch (e) { return null; }
-  }
-  function openSettings() {
-    const c = getCfg() || {};
-    cfgOwner.value = c.owner || ''; cfgRepo.value = c.repo || '';
-    cfgBranch.value = c.branch || 'main'; cfgPath.value = c.path || 'index.html';
-    cfgToken.value = c.token || '';
-    dlg.showModal();
-  }
-  document.getElementById('settingsForm').addEventListener('submit', () => {
-    const c = { owner: cfgOwner.value.trim(), repo: cfgRepo.value.trim(), branch: cfgBranch.value.trim() || 'main',
-      path: (cfgPath.value.trim() || 'index.html').replace(/^\/+/, ''), token: cfgToken.value.trim() };
-    try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); setStatus('GitHub settings saved', 'ok'); }
-    catch (e) { setStatus('Could not store settings: ' + e.message, 'err'); }
-  });
-  cfgCancel.onclick = () => dlg.close();
-  cfgClear.onclick = () => { try { localStorage.removeItem(CFG_KEY); } catch (e) {} dlg.close(); setStatus('GitHub settings removed'); };
 
   // ---------- editing ----------
   function applyEditState() {
@@ -271,10 +215,9 @@
   document.getElementById('btnAddEch').onclick = () => {
     const grid = diagram.querySelector('.ech-grid');
     const last = grid.querySelector('.ech:last-child');
-    const card = last ? last.cloneNode(true) : null;
-    if (!card) return;
-    const n = grid.querySelectorAll('.ech').length + 1;
-    card.querySelector('[data-edit]').textContent = 'Échéance ' + n;
+    if (!last) return;
+    const card = last.cloneNode(true);
+    card.querySelector('[data-edit]').textContent = 'Échéance ' + (grid.querySelectorAll('.ech').length + 1);
     grid.appendChild(card);
     syncFanout(); applyEditState(); markDirty();
   };
@@ -294,92 +237,71 @@
   });
 
   // ---------- serialization ----------
-  function serialize() {
-    const clone = document.documentElement.cloneNode(true);
+  function cleanDiagram() {
+    const clone = diagram.cloneNode(true);
     clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
     clone.querySelectorAll('.ui-only').forEach(el => el.remove());
-    clone.querySelector('body').classList.remove('editing');
-    clone.querySelector('#btnEdit').setAttribute('aria-pressed', 'false');
-    const st = clone.querySelector('#status'); st.textContent = ''; st.className = '';
-    clone.querySelector('#settings').removeAttribute('open');
-    return '<!DOCTYPE html>\n' + clone.outerHTML;
+    return clone;
   }
-  function toBase64(str) {
-    const bytes = new TextEncoder().encode(str);
-    let bin = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-    return btoa(bin);
+  function serializePage() {
+    const page = document.documentElement.cloneNode(true);
+    page.querySelector('#diagram').replaceWith(cleanDiagram());
+    page.querySelector('body').classList.remove('editing');
+    page.querySelector('#btnEdit').setAttribute('aria-pressed', 'false');
+    const st = page.querySelector('#status'); st.textContent = ''; st.className = '';
+    return '<!DOCTYPE html>\n' + page.outerHTML;
   }
 
-  // ---------- GitHub ----------
-  function apiUrl(c) {
-    return 'https://api.github.com/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo) +
-      '/contents/' + c.path.split('/').map(encodeURIComponent).join('/');
-  }
-  async function errText(res) {
-    try { const j = await res.json(); return res.status + ' ' + (j.message || ''); } catch (e) { return String(res.status); }
-  }
-  async function saveToGitHub() {
-    const c = getCfg();
-    if (!c) { openSettings(); return; }
-    setStatus('Saving to GitHub…');
-    const headers = { Authorization: 'Bearer ' + c.token, Accept: 'application/vnd.github+json' };
+  // ---------- save / load through the relay ----------
+  async function save() {
+    if (saving) return;
+    saving = true;
+    setStatus('Saving…');
     try {
-      let sha;
-      const get = await fetch(apiUrl(c) + '?ref=' + encodeURIComponent(c.branch), { headers, cache: 'no-store' });
-      if (get.ok) sha = (await get.json()).sha;
-      else if (get.status !== 404) throw new Error(await errText(get));
-      const body = { message: 'Update diagram (' + new Date().toLocaleString() + ')', content: toBase64(serialize()), branch: c.branch };
-      if (sha) body.sha = sha;
-      const put = await fetch(apiUrl(c), { method: 'PUT', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify(body) });
-      if (!put.ok) throw new Error(await errText(put));
-      const j = await put.json();
+      const inner = cleanDiagram().innerHTML.replace(START, '').replace(END, '');
+      const res = await fetch(RELAY_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html: inner }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || res.status);
       dirty = false;
-      setStatus('Saved to GitHub ✓ ' + j.commit.sha.slice(0, 7) + ' · ' + new Date().toLocaleTimeString(), 'ok');
+      setStatus('Saved ✓ ' + new Date().toLocaleTimeString(), 'ok');
     } catch (e) {
       setStatus('Save failed: ' + e.message, 'err');
+    } finally {
+      saving = false;
     }
   }
-  async function pullLatest() {
-    const c = getCfg();
-    if (!c) return;
+  async function loadLatest() {
     try {
-      const res = await fetch(apiUrl(c) + '?ref=' + encodeURIComponent(c.branch),
-        { headers: { Authorization: 'Bearer ' + c.token, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store' });
-      if (res.status === 404) { setStatus('Not on GitHub yet — the first save will create it'); return; }
-      if (!res.ok) { setStatus('Could not load from GitHub: ' + await errText(res), 'err'); return; }
-      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
-      const remote = doc.getElementById('diagram');
-      if (remote && !dirty && remote.innerHTML !== diagram.innerHTML) {
-        diagram.innerHTML = remote.innerHTML;
+      const res = await fetch(RELAY_URL, { cache: 'no-store' });
+      if (!res.ok) return;
+      const j = await res.json();
+      if (typeof j.html === 'string' && !dirty && !editing) {
+        diagram.innerHTML = START + j.html + END;
         syncFanout(); applyEditState();
-        setStatus('Loaded latest version from GitHub', 'ok');
       }
-    } catch (e) { setStatus('Could not load from GitHub: ' + e.message, 'err'); }
+    } catch (e) { /* offline or relay unreachable: keep the published version */ }
   }
 
-  // ---------- local download / print ----------
   function download() {
-    const blob = new Blob([serialize()], { type: 'text/html' });
+    const blob = new Blob([serializePage()], { type: 'text/html' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = (getCfg() && getCfg().path.split('/').pop()) || 'index.html';
+    a.download = 'diagramme-sap.html';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  document.getElementById('btnSave').onclick = saveToGitHub;
+  document.getElementById('btnSave').onclick = save;
   document.getElementById('btnDownload').onclick = download;
   document.getElementById('btnPrint').onclick = () => window.print();
-  document.getElementById('btnSettings').onclick = openSettings;
   document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); getCfg() ? saveToGitHub() : download(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); }
   });
   window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
 
   syncFanout();
   applyEditState();
-  pullLatest();
+  loadLatest();
 })();
 </script>
 </body>
