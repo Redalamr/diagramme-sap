@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mode avec réservation de quantités</title>
+<style>
+  :root { --ink:#222; --arrow:#333; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:#eceff1; font-family:"DejaVu Sans","Segoe UI",Arial,sans-serif; color:var(--ink); }
+
+  /* ---------- toolbar (not part of the diagram) ---------- */
+  .toolbar { position:sticky; top:0; z-index:50; display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+    padding:10px 16px; background:#fff; border-bottom:1px solid #cfd8dc; font-family:"Segoe UI",Arial,sans-serif; font-size:13px; }
+  .toolbar button, dialog button { font:inherit; padding:6px 12px; border:1px solid #b0bec5; border-radius:6px; background:#f7f9fa; cursor:pointer; }
+  .toolbar button:hover, dialog button:hover { background:#e3eaee; }
+  .toolbar button.primary, dialog button.primary { background:#1f6feb; border-color:#1f6feb; color:#fff; }
+  .toolbar button.primary:hover { background:#1a5fcc; }
+  #btnEdit[aria-pressed="true"] { background:#6a1b9a; border-color:#6a1b9a; color:#fff; }
+  #btnAddEch { display:none; }
+  body.editing #btnAddEch { display:inline-block; }
+  #status { margin-left:auto; color:#546e7a; }
+  #status.ok { color:#2e7d32; } #status.err { color:#c62828; } #status.warn { color:#b26a00; }
+
+  .stage { overflow-x:auto; padding:20px 16px 40px; }
+
+  /* ---------- diagram ---------- */
+  #diagram { width:940px; margin:0 auto; background:#fff; border:3px solid #111; border-radius:6px; padding:12px 18px 16px; }
+  .title { text-align:center; font-size:19px; font-weight:bold; margin:6px 0 10px; }
+  .subtitle { text-align:center; font-size:11px; color:#555; margin:0 0 12px; }
+
+  .box { color:#fff; border-radius:5px; text-align:center; font-weight:bold; display:flex; flex-direction:column;
+    justify-content:center; align-items:center; gap:6px; padding:6px 10px; }
+  .box .sub { font-weight:normal; font-size:11.5px; }
+
+  .panel { border-radius:10px; border:2px solid; }
+  .panel-title { font-size:13px; font-weight:bold; line-height:17px; min-height:17px; }
+
+  .arrow-v { position:relative; height:30px; }
+  .arrow-v::before { content:""; position:absolute; left:50%; top:0; bottom:8px; width:2.5px; transform:translateX(-50%); background:var(--arrow); }
+  .arrow-v::after { content:""; position:absolute; left:50%; bottom:0; transform:translateX(-50%);
+    border-left:6px solid transparent; border-right:6px solid transparent; border-top:9px solid var(--arrow); }
+  .arrow-h { position:relative; flex:1; min-width:28px; height:12px; margin:0 8px; }
+  .arrow-h::before { content:""; position:absolute; left:0; right:8px; top:50%; height:2.5px; transform:translateY(-50%); background:var(--arrow); }
+  .arrow-h::after { content:""; position:absolute; right:0; top:50%; transform:translateY(-50%);
+    border-top:6px solid transparent; border-bottom:6px solid transparent; border-left:9px solid var(--arrow); }
+
+  /* SAP panel */
+  .sap { width:588px; background:#f3ebf7; border-color:#b39ddb; padding:10px 16px 10px; }
+  .sap .panel-title { color:#4a148c; }
+  .po { background:#6a1b9a; width:306px; min-height:58px; margin:6px auto 0; font-size:14.5px; }
+  .poste { background:#8e24aa; width:306px; min-height:74px; margin:0 auto; font-size:13px; }
+
+  .fanout { --n:3; }
+  .split { position:relative; height:44px; }
+  .split::before { content:""; position:absolute; left:50%; top:0; width:2.5px; height:17px; transform:translateX(-50%); background:var(--arrow); }
+  .split::after { content:""; position:absolute; top:16px; height:2.5px; background:var(--arrow);
+    left:calc(10px + (100% - 20px) / (2 * var(--n)) - 1.25px); right:calc(10px + (100% - 20px) / (2 * var(--n)) - 1.25px); }
+  .split-arrows { position:absolute; left:10px; right:10px; top:16px; bottom:0; display:grid; grid-template-columns:repeat(var(--n), 1fr); }
+  .split-arrows .arrow-v { height:100%; }
+
+  .reserved { border:2px dashed #d64545; border-radius:8px; padding:8px; }
+  .reserved-label { text-align:center; color:#c62828; font-weight:bold; font-size:9.5px; margin:2px 0 8px; }
+  .ech-grid { display:grid; grid-template-columns:repeat(var(--n), 1fr); }
+  .ech { background:#ab47bc; min-height:74px; margin:0 8px; position:relative; font-size:12.5px; gap:7px; }
+  .ech .country { font-size:12px; }
+  .ech .sub { font-size:11px; }
+
+  .handoff { position:relative; width:588px; }
+  .handoff .arrow-v { height:26px; margin-top:-2px; }
+  .handoff-label { position:absolute; left:calc(50% + 20px); top:4px; font-size:10.5px; font-style:italic; color:#333; white-space:nowrap; }
+
+  /* bottom row */
+  .bottom { display:grid; grid-template-columns:1fr 150px; gap:14px; }
+  .vision { background:#fbede4; border-color:#e8b48f; padding:10px 14px 12px; }
+  .vision .panel-title { color:#c0561b; }
+  .flow { display:flex; align-items:center; margin:18px 0 14px; }
+  .flow .box { min-height:58px; font-size:13px; }
+  .supplier { background:#455a64; min-width:140px; font-size:14px !important; }
+  .confirm { background:#e07b39; min-width:160px; }
+  .asn { background:#e07b39; min-width:124px; }
+  .receipt { background:#2a9fd8; min-width:116px; }
+  .arrow-h.out { flex:0 0 50px; margin:0 -40px 0 0; z-index:2; }
+  .caption { text-align:center; font-style:italic; font-size:9.5px; color:#555; margin:22px 0 4px; }
+
+  .ncg-panel { background:#e0f2f1; border:2px dashed #1f7a70; padding:8px; }
+  .ncg-panel .panel-title { color:#00695c; font-size:12px; }
+  .ncg { background:#00897b; min-height:58px; margin-top:18px; font-size:14px; }
+  .rule { margin-top:6px; background:#fff; border:1.5px solid #26a69a; border-radius:5px; text-align:center; font-size:9.5px; color:#004d40; padding:7px 4px; line-height:1.9; }
+
+  .key { margin-top:14px; background:#fdf6dc; border-color:#ead08a; padding:10px 26px 16px; }
+  .key .panel-title { color:#b7860b; font-size:11.5px; }
+  .key-text { text-align:center; font-size:13px; color:#333; line-height:1.6; margin-top:8px; }
+
+  /* edit mode */
+  body.editing [contenteditable] { outline:1px dashed transparent; border-radius:3px; cursor:text; }
+  body.editing [contenteditable]:hover { outline-color:rgba(0,0,0,.35); }
+  body.editing [contenteditable]:focus { outline:2px solid #1f6feb; background:rgba(31,111,235,.08); }
+  .del { position:absolute; top:-9px; right:-9px; width:20px; height:20px; border-radius:50%; border:none; background:#c62828; color:#fff;
+    font:bold 13px/20px Arial,sans-serif; padding:0; cursor:pointer; }
+
+  /* settings dialog */
+  dialog { border:none; border-radius:10px; padding:20px 22px; width:min(440px, calc(100vw - 32px)); font-family:"Segoe UI",Arial,sans-serif; font-size:13px; }
+  dialog::backdrop { background:rgba(0,0,0,.35); }
+  dialog h2 { margin:0 0 4px; font-size:16px; }
+  dialog p { margin:0 0 12px; color:#607d8b; }
+  dialog label { display:block; margin:10px 0 3px; font-weight:600; }
+  dialog input { width:100%; font:inherit; padding:7px 9px; border:1px solid #b0bec5; border-radius:6px; }
+  dialog .row { display:flex; gap:10px; } dialog .row > div { flex:1; }
+  dialog .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:18px; }
+  dialog .actions .left { margin-right:auto; }
+
+  @media print {
+    .toolbar, dialog { display:none !important; }
+    body { background:#fff; } .stage { padding:0; overflow:visible; }
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <button id="btnEdit" aria-pressed="false">✎ Edit</button>
+  <button id="btnAddEch">+ Échéance</button>
+  <button id="btnSave" class="primary">💾 Save to GitHub</button>
+  <button id="btnDownload">⬇ Download HTML</button>
+  <button id="btnPrint">🖨 Print / PDF</button>
+  <button id="btnSettings">⚙ GitHub settings</button>
+  <span id="status"></span>
+</div>
+
+<div class="stage">
+<div id="diagram">
+  <div class="title" data-edit>Mode avec réservation de quantités — portage des demandeurs par les échéances</div>
+  <div class="subtitle" data-edit>Une seule commande, un seul poste par article ; les demandeurs spécifiques sont portés par les échéances (information interne SAP)</div>
+
+  <div class="panel sap">
+    <div class="panel-title" data-edit>SAP S/4HANA — structure interne de la commande d'achat</div>
+    <div class="box po"><div data-edit>Commande d'Achat SAP</div></div>
+    <div class="arrow-v"></div>
+    <div class="box poste">
+      <div data-edit>Poste 10</div>
+      <div class="sub" data-edit>Article A &nbsp;·&nbsp; Qté 30</div>
+    </div>
+
+    <div class="fanout" style="--n:3">
+      <div class="split"><div class="split-arrows"><div class="arrow-v"></div><div class="arrow-v"></div><div class="arrow-v"></div></div></div>
+      <div class="reserved">
+        <div class="reserved-label" data-edit>Demandeurs spécifiques — internes SAP (non transmis au fournisseur)</div>
+        <div class="ech-grid">
+          <div class="box ech"><div data-edit>Échéance 1</div><div class="country" data-edit>Espagne</div><div class="sub" data-edit>Qté 10</div></div>
+          <div class="box ech"><div data-edit>Échéance 2</div><div class="country" data-edit>Portugal</div><div class="sub" data-edit>Qté 10</div></div>
+          <div class="box ech"><div data-edit>Échéance 3</div><div class="country" data-edit>France</div><div class="sub" data-edit>Qté 10</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="handoff">
+    <div class="arrow-v"></div>
+    <div class="handoff-label" data-edit>Poste agrégé transmis (Article A · Qté 30)</div>
+  </div>
+
+  <div class="bottom">
+    <div class="panel vision">
+      <div class="panel-title" data-edit>Vision agrégée transmise au fournisseur / WMS</div>
+      <div class="flow">
+        <div class="box supplier"><div data-edit>Fournisseur</div></div>
+        <div class="arrow-h"></div>
+        <div class="box confirm"><div data-edit>Confirmation</div><div class="sub" data-edit>Qté 30</div></div>
+        <div class="arrow-h"></div>
+        <div class="box asn"><div data-edit>ASN</div><div class="sub" data-edit>Qté 30</div></div>
+        <div class="arrow-h"></div>
+        <div class="box receipt"><div data-edit>Réception</div><div class="sub" data-edit>Qté reçue</div></div>
+        <div class="arrow-h out"></div>
+      </div>
+      <div class="caption" data-edit>Confirmations, ASN et réceptions restent au niveau du poste unique (Qté 30) — le fournisseur ne voit jamais les demandeurs spécifiques</div>
+    </div>
+
+    <div class="panel ncg-panel">
+      <div class="panel-title" data-edit>NCG (aval)</div>
+      <div class="box ncg"><div data-edit>NCG</div></div>
+      <div class="rule"><div data-edit>Répartition selon</div><div data-edit><b>règles métier à définir</b></div></div>
+    </div>
+  </div>
+
+  <div class="panel key">
+    <div class="panel-title" data-edit>Message clé</div>
+    <div class="key-text" data-edit>Les demandeurs spécifiques sont portés dans SAP au niveau des échéances associées au poste de commande.<br>Le fournisseur, les confirmations, les ASN et les réceptions restent associés à un poste de commande unique et agrégé.</div>
+  </div>
+</div>
+</div>
+
+<dialog id="settings">
+  <form method="dialog" id="settingsForm">
+    <h2>GitHub settings</h2>
+    <p>Stored only in this browser (localStorage) — never written into the saved file.</p>
+    <div class="row">
+      <div><label for="cfgOwner">Owner (user or org)</label><input id="cfgOwner" required placeholder="your-username"></div>
+      <div><label for="cfgRepo">Repository</label><input id="cfgRepo" required placeholder="diagrams"></div>
+    </div>
+    <div class="row">
+      <div><label for="cfgBranch">Branch</label><input id="cfgBranch" placeholder="main"></div>
+      <div><label for="cfgPath">File path in repo</label><input id="cfgPath" placeholder="index.html"></div>
+    </div>
+    <label for="cfgToken">Personal access token</label>
+    <input id="cfgToken" type="password" required placeholder="github_pat_…" autocomplete="off">
+    <div class="actions">
+      <button type="button" id="cfgClear" class="left">Forget</button>
+      <button type="button" id="cfgCancel">Cancel</button>
+      <button type="submit" class="primary">Save settings</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(function () {
+  const CFG_KEY = 'diagram-github-config';
+  const diagram = document.getElementById('diagram');
+  const statusEl = document.getElementById('status');
+  const btnEdit = document.getElementById('btnEdit');
+  const dlg = document.getElementById('settings');
+  let editing = false, dirty = false;
+
+  function setStatus(msg, kind) { statusEl.textContent = msg || ''; statusEl.className = kind || ''; }
+  function markDirty() { dirty = true; setStatus('Unsaved changes', 'warn'); }
+
+  // ---------- config ----------
+  function getCfg() {
+    try {
+      const c = JSON.parse(localStorage.getItem(CFG_KEY) || 'null');
+      return c && c.owner && c.repo && c.token ? c : null;
+    } catch (e) { return null; }
+  }
+  function openSettings() {
+    const c = getCfg() || {};
+    cfgOwner.value = c.owner || ''; cfgRepo.value = c.repo || '';
+    cfgBranch.value = c.branch || 'main'; cfgPath.value = c.path || 'index.html';
+    cfgToken.value = c.token || '';
+    dlg.showModal();
+  }
+  document.getElementById('settingsForm').addEventListener('submit', () => {
+    const c = { owner: cfgOwner.value.trim(), repo: cfgRepo.value.trim(), branch: cfgBranch.value.trim() || 'main',
+      path: (cfgPath.value.trim() || 'index.html').replace(/^\/+/, ''), token: cfgToken.value.trim() };
+    try { localStorage.setItem(CFG_KEY, JSON.stringify(c)); setStatus('GitHub settings saved', 'ok'); }
+    catch (e) { setStatus('Could not store settings: ' + e.message, 'err'); }
+  });
+  cfgCancel.onclick = () => dlg.close();
+  cfgClear.onclick = () => { try { localStorage.removeItem(CFG_KEY); } catch (e) {} dlg.close(); setStatus('GitHub settings removed'); };
+
+  // ---------- editing ----------
+  function applyEditState() {
+    document.body.classList.toggle('editing', editing);
+    btnEdit.setAttribute('aria-pressed', String(editing));
+    diagram.querySelectorAll('[data-edit]').forEach(el => {
+      if (editing) el.setAttribute('contenteditable', 'true'); else el.removeAttribute('contenteditable');
+    });
+    diagram.querySelectorAll('.ui-only').forEach(el => el.remove());
+    if (editing) diagram.querySelectorAll('.ech').forEach(card => {
+      const b = document.createElement('button');
+      b.className = 'del ui-only'; b.title = 'Supprimer cette échéance'; b.textContent = '×';
+      card.appendChild(b);
+    });
+  }
+  function syncFanout() {
+    const fan = diagram.querySelector('.fanout');
+    const n = fan.querySelectorAll('.ech').length;
+    fan.style.setProperty('--n', n);
+    fan.querySelector('.split-arrows').innerHTML = '<div class="arrow-v"></div>'.repeat(n);
+  }
+  btnEdit.onclick = () => { editing = !editing; applyEditState(); };
+  document.getElementById('btnAddEch').onclick = () => {
+    const grid = diagram.querySelector('.ech-grid');
+    const last = grid.querySelector('.ech:last-child');
+    const card = last ? last.cloneNode(true) : null;
+    if (!card) return;
+    const n = grid.querySelectorAll('.ech').length + 1;
+    card.querySelector('[data-edit]').textContent = 'Échéance ' + n;
+    grid.appendChild(card);
+    syncFanout(); applyEditState(); markDirty();
+  };
+  diagram.addEventListener('click', e => {
+    const del = e.target.closest('.del');
+    if (!del) return;
+    const grid = diagram.querySelector('.ech-grid');
+    if (grid.querySelectorAll('.ech').length <= 1) { setStatus('At least one échéance is required', 'warn'); return; }
+    del.closest('.ech').remove();
+    syncFanout(); markDirty();
+  });
+  diagram.addEventListener('input', markDirty);
+  diagram.addEventListener('paste', e => {
+    if (!e.target.closest('[contenteditable]')) return;
+    e.preventDefault();
+    document.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain'));
+  });
+
+  // ---------- serialization ----------
+  function serialize() {
+    const clone = document.documentElement.cloneNode(true);
+    clone.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+    clone.querySelectorAll('.ui-only').forEach(el => el.remove());
+    clone.querySelector('body').classList.remove('editing');
+    clone.querySelector('#btnEdit').setAttribute('aria-pressed', 'false');
+    const st = clone.querySelector('#status'); st.textContent = ''; st.className = '';
+    clone.querySelector('#settings').removeAttribute('open');
+    return '<!DOCTYPE html>\n' + clone.outerHTML;
+  }
+  function toBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(bin);
+  }
+
+  // ---------- GitHub ----------
+  function apiUrl(c) {
+    return 'https://api.github.com/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo) +
+      '/contents/' + c.path.split('/').map(encodeURIComponent).join('/');
+  }
+  async function errText(res) {
+    try { const j = await res.json(); return res.status + ' ' + (j.message || ''); } catch (e) { return String(res.status); }
+  }
+  async function saveToGitHub() {
+    const c = getCfg();
+    if (!c) { openSettings(); return; }
+    setStatus('Saving to GitHub…');
+    const headers = { Authorization: 'Bearer ' + c.token, Accept: 'application/vnd.github+json' };
+    try {
+      let sha;
+      const get = await fetch(apiUrl(c) + '?ref=' + encodeURIComponent(c.branch), { headers, cache: 'no-store' });
+      if (get.ok) sha = (await get.json()).sha;
+      else if (get.status !== 404) throw new Error(await errText(get));
+      const body = { message: 'Update diagram (' + new Date().toLocaleString() + ')', content: toBase64(serialize()), branch: c.branch };
+      if (sha) body.sha = sha;
+      const put = await fetch(apiUrl(c), { method: 'PUT', headers: Object.assign({ 'Content-Type': 'application/json' }, headers), body: JSON.stringify(body) });
+      if (!put.ok) throw new Error(await errText(put));
+      const j = await put.json();
+      dirty = false;
+      setStatus('Saved to GitHub ✓ ' + j.commit.sha.slice(0, 7) + ' · ' + new Date().toLocaleTimeString(), 'ok');
+    } catch (e) {
+      setStatus('Save failed: ' + e.message, 'err');
+    }
+  }
+  async function pullLatest() {
+    const c = getCfg();
+    if (!c) return;
+    try {
+      const res = await fetch(apiUrl(c) + '?ref=' + encodeURIComponent(c.branch),
+        { headers: { Authorization: 'Bearer ' + c.token, Accept: 'application/vnd.github.raw+json' }, cache: 'no-store' });
+      if (res.status === 404) { setStatus('Not on GitHub yet — the first save will create it'); return; }
+      if (!res.ok) { setStatus('Could not load from GitHub: ' + await errText(res), 'err'); return; }
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      const remote = doc.getElementById('diagram');
+      if (remote && !dirty && remote.innerHTML !== diagram.innerHTML) {
+        diagram.innerHTML = remote.innerHTML;
+        syncFanout(); applyEditState();
+        setStatus('Loaded latest version from GitHub', 'ok');
+      }
+    } catch (e) { setStatus('Could not load from GitHub: ' + e.message, 'err'); }
+  }
+
+  // ---------- local download / print ----------
+  function download() {
+    const blob = new Blob([serialize()], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (getCfg() && getCfg().path.split('/').pop()) || 'index.html';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  document.getElementById('btnSave').onclick = saveToGitHub;
+  document.getElementById('btnDownload').onclick = download;
+  document.getElementById('btnPrint').onclick = () => window.print();
+  document.getElementById('btnSettings').onclick = openSettings;
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); getCfg() ? saveToGitHub() : download(); }
+  });
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  syncFanout();
+  applyEditState();
+  pullLatest();
+})();
+</script>
+</body>
+</html>
