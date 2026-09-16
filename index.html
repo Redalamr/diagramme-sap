@@ -119,26 +119,26 @@
 <div class="stage">
 <div id="diagram"><!--DIAGRAM-START-->
   <div class="title" data-edit="">Mode avec réservation de quantités — portage des demandeurs par les échéances</div>
-  <div class="subtitle" data-edit="">Une seule commande, un seul poste par article ; les demandeurs spécifiques sont portés par les échéances (information interne SAP)</div>
+  <div class="subtitle" data-edit=""><br></div>
 
   <div class="panel sap">
     <div class="panel-title" data-edit="">SAP S/4HANA — structure interne de la commande d'achat</div>
-    <div class="box po"><div data-edit="">Commanddzcef vjckee d'Achat SAP</div></div>
+    <div class="box po"><div data-edit="">Commande d'Achat SAP</div></div>
     <div class="arrow-v"></div>
     <div class="box poste">
       <div data-edit="">Poste 10</div>
       <div class="sub" data-edit="">Article A &nbsp;·&nbsp; Qté 30</div>
     </div>
 
-    <div class="fanout" style="--n:3">
+    <div class="fanout" style="--n: 3;">
       <div class="split"><div class="split-arrows"><div class="arrow-v"></div><div class="arrow-v"></div><div class="arrow-v"></div></div></div>
       <div class="reserved">
-        <div class="reserved-label" data-edit="">Demandeurs spécifiques — internes SAP (non transmis au fournisseur)</div>
+        <div class="reserved-label" data-edit="">Échéances SAP portant les demandeurs spécifiques (information interne SAP)</div>
         <div class="ech-grid">
           <div class="box ech"><div data-edit="">Échéance 1</div><div class="country" data-edit="">Espagne</div><div class="sub" data-edit="">Qté 10</div></div>
           <div class="box ech"><div data-edit="">Échéance 2</div><div class="country" data-edit="">Portugal</div><div class="sub" data-edit="">Qté 10</div></div>
-          <div class="box ech"><div data-edit="">Échéance 3</div><div class="country" data-edit="">France</div><div class="sub" data-edit="">Qté 10</div></div>
-        </div>
+          
+        <div class="box ech"><div data-edit="">Échéance 3</div><div class="country" data-edit="">Portugal</div><div class="sub" data-edit="">Qté 10</div></div></div>
       </div>
     </div>
   </div>
@@ -154,18 +154,18 @@
       <div class="flow">
         <div class="box supplier"><div data-edit="">Fournisseur</div></div>
         <div class="arrow-h"></div>
-        <div class="box confirm"><div data-edit="">Confirmation</div><div class="sub" data-edit="">Qté 30</div></div>
+        <div class="box confirm"><div data-edit="">Confirmation</div><div class="sub" data-edit=""><br></div></div>
         <div class="arrow-h"></div>
-        <div class="box asn"><div data-edit="">ASN</div><div class="sub" data-edit="">Qté 30</div></div>
+        <div class="box asn"><div data-edit="">ASN</div><div class="sub" data-edit=""><br></div></div>
         <div class="arrow-h"></div>
-        <div class="box receipt"><div data-edit="">Réception</div><div class="sub" data-edit="">Qté reçue</div></div>
+        <div class="box receipt"><div data-edit="">Réception</div><div class="sub" data-edit=""><br></div></div>
         <div class="arrow-h out"></div>
       </div>
-      <div class="caption" data-edit="">Confirmations, ASN et réceptions restent au niveau du poste unique (Qté 30) — le fournisseur ne voit jamais les demandeurs spécifiques</div>
+      <div class="caption" data-edit="">Confirmations, ASN et réceptions restent au niveau du poste (Qté 30) — le fournisseur ne voit jamais les demandeurs spécifiques</div>
     </div>
 
     <div class="panel ncg-panel">
-      <div class="panel-title" data-edit="">NCG (aval)</div>
+      <div class="panel-title" data-edit="">NCG&nbsp;</div>
       <div class="box ncg"><div data-edit="">NCG</div></div>
       <div class="rule"><div data-edit="">Répartition selon</div><div data-edit=""><b>règles métier à définir</b></div></div>
     </div>
@@ -173,7 +173,7 @@
 
   <div class="panel key">
     <div class="panel-title" data-edit="">Message clé</div>
-    <div class="key-text" data-edit="">Les demandeurs spécifiques sont portés dans SAP au niveau des échéances associées au poste de commande.<br>Le fournisseur, les confirmations, les ASN et les réceptions restent associés à un poste de commande unique et agrégé.</div>
+    <div class="key-text" data-edit="">Les demandeurs spécifiques sont portés dans SAP au niveau des échéances associées au poste de commande.<br>Le fournisseur, les confirmations, les ASN et les réceptions restent associés à un poste de commande et non pas aux éché.</div>
   </div>
 <!--DIAGRAM-END--></div>
 </div>
